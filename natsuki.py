@@ -39,7 +39,7 @@ async def on_message(msg:discord.Message):
 # Boas-vindas 
 @bot.event
 async def on_member_join(member: discord.Member):
-    canal = bot.get_channel(1455999761499951215)
+    canal = bot.get_channel('mude para o seu')
     await canal.send(
         f"Hã?! Mais alguém entrou?! \n"
         f"B-bem... seja bem-vindo(a), {member.display_name}... "
@@ -49,7 +49,7 @@ async def on_member_join(member: discord.Member):
 #Saidas
 @bot.event
 async def on_member_remove(member:discord.Member):
-    canal = bot.get_channel(1456002920087683316)
+    canal = bot.get_channel('mude para o seu')
     await canal.send(
         f"Hmph... então o {member.display_name} foi embora, né? 😒\n"
         f"N-não que eu me importe ou algo assim!\n"
@@ -168,4 +168,4 @@ async def calculadora(ctx:commands.context,n1:float,n2:float,opr:str):
     else:
         await ctx.send('Me de uma operador decente idiota')
 
-bot.run('MTQ1NTk4NTg2MzQ5MzI5MjI0OQ.G2sXW_.u57GT9tJQHNuGsnQngCm4JUE_xW06PCE0EP0a8')
+bot.run('Mude para o seu!')
