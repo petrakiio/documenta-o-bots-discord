@@ -259,99 +259,136 @@ async def hug(ctx):
             else:
                 await ctx.send("Erro ao acessar a API :(")
 #musica
+ilas = {}
+# --- FUNÇÃO AUXILIAR DE FILA ---
+def tocar_proxima(ctx):
+    id_guild = ctx.guild.id
+    if id_guild in filas and len(filas[id_guild]) > 0:
+        proxima = filas[id_guild].pop(0)
+        url_audio = proxima['url']
+        titulo = proxima['titulo']
+        
+        vc = ctx.voice_client
+        if vc:
+            vc.play(discord.FFmpegPCMAudio(url_audio, **FFMPEG_OPTIONS), 
+                    after=lambda e: tocar_proxima(ctx))
+            # Avisa que a próxima começou
+            bot.loop.create_task(ctx.send(f"🎶 Próxima da lista: **{titulo}**! Ouça logo, baka! 🙄"))
+
+# --- COMANDOS ---
+
 @bot.command()
-async def tocar(ctx, *, busca: str):
-    # Reação inicial da Natsuki
-    await ctx.send(f"Hmph... espera um pouco, estou a procurar essa tal de '{busca}'... não é como se eu não tivesse nada mais importante para fazer! 🙄")
-    
-    try:
-        resultado = yt_music.search(busca, filter="songs", limit=1)
-        
-        if not resultado:
-            await ctx.reply("Argh! Não encontrei nada! Tens a certeza que isso é uma música ou acabaste de inventar? >.<")
-            return
-            
-        musica = resultado[0]
-        titulo = musica['title']
-        artista = musica['artists'][0]['name']
-        video_id = musica['videoId']
-        link = f"https://music.youtube.com/watch?v={video_id}"
-
-        thumbnail = musica['thumbnails'][-1]['url']
-
-        embed = discord.Embed(
-            title=f"🎵 {titulo}",
-            description=f"Artista: **{artista}**\n\nN-não é como se eu quisesse ouvir isto contigo, mas aqui tens o link: [YouTube Music]({link})",
-            color=0xff0000
-        )
-        embed.set_thumbnail(url=thumbnail)
-        embed.set_footer(text="Vê se não me interrompes enquanto estou a ler o meu mangá! 🧁")
-
-        await ctx.reply(embed=embed)
-        
-    except Exception as e:
-        await ctx.send(f"E-Ei... algo correu mal. A culpa é tua, de certeza! Erro: {e}")
-#entrar no canal de musica
-bot.command()
 async def entrar(ctx):
-    if ctx.author.voice: # Verifica se tu estás numa call
-        canal = ctx.author.voice.channel()
+    if ctx.author.voice:
+        canal = ctx.author.voice.channel
         await canal.connect()
-        await ctx.send(f"Hmph! Já que insistes tanto, eu entrei no canal **{canal}**... mas não te habitues! 🙄")
+        await ctx.send(f"Hmph! Já que insistes, entrei no **{canal}**... mas não te habitues! 🙄")
     else:
-        await ctx.send("Como é que queres que eu entre numa call se nem tu estás lá? És totó? >.<")
+        await ctx.send("És totó? Entra numa call primeiro! >.<")
 
 @bot.command()
 async def play(ctx, *, busca: str):
+    # Conexão automática ao canal fixo ou ao canal do usuário
     ID_CANAL_VOZ = 1456187955613008017
-    canal = bot.get_channel(ID_CANAL_VOZ)
+    canal = bot.get_channel(ID_CANAL_VOZ) or (ctx.author.voice.channel if ctx.author.voice else None)
 
-    # Conectar ao canal se não estiver lá
+    if not canal:
+        return await ctx.send("Não achei nenhum canal de voz! Estás a tentar enganar-me? 💢")
+
     if not ctx.voice_client:
         vc = await canal.connect()
     else:
         vc = ctx.voice_client
 
-    # Lógica de busca e extração do áudio
-    with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-        info = ydl.extract_info(f"ytsearch:{busca}", download=False)
-        url_audio = info['entries'][0]['url']
-        titulo = info['entries'][0]['title']
+    if ctx.guild.id not in filas:
+        filas[ctx.guild.id] = []
 
-    # Iniciar a reprodução
-    vc.play(discord.FFmpegPCMAudio(url_audio, **FFMPEG_OPTIONS))
-    await ctx.send(f"Hmph! Tocando **{titulo}**... baka! 🎵")
+    # Reação da Natsuki e busca via YTMusic para o Embed
+    await ctx.send(f"🔍 Procurando '{busca}'... não me apresse!")
+    
+    try:
+        # Busca detalhes para o Embed usando YTMusic
+        search_result = yt_music.search(busca, filter="songs", limit=1)
+        if not search_result:
+            return await ctx.send("Argh! Não encontrei nada! Tens a certeza que isso existe? >.<")
+        
+        musica_info = search_result[0]
+        titulo = musica_info['title']
+        video_id = musica_info['videoId']
+        link_yt = f"https://music.youtube.com/watch?v={video_id}"
+        thumb = musica_info['thumbnails'][-1]['url']
+
+        # Extração do áudio real via yt-dlp
+        with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+            # Se for link direto (WhatsApp/URL), usa a URL, senão usa o ID do YTMusic
+            info = ydl.extract_info(busca if busca.startswith('http') else link_yt, download=False)
+            url_audio = info['url'] if 'url' in info else info['entries'][0]['url']
+
+        # Adiciona à fila
+        filas[ctx.guild.id].append({'url': url_audio, 'titulo': titulo})
+
+        # Lógica de tocar agora ou enfileirar
+        if not vc.is_playing() and not vc.is_paused():
+            musica = filas[ctx.guild.id].pop(0)
+            vc.play(discord.FFmpegPCMAudio(musica['url'], **FFMPEG_OPTIONS), 
+                    after=lambda e: tocar_proxima(ctx))
+            
+            embed = discord.Embed(title=f"🎵 Tocando Agora", description=f"**[{titulo}]({link_yt})**\n\nNão é como se eu quisesse ouvir isso contigo! 🙄", color=0xffb7c5)
+            embed.set_thumbnail(url=thumb)
+            await ctx.send(embed=embed)
+        else:
+            await ctx.send(f"✅ **{titulo}** foi para a lista! Espera a tua vez, baka! 💢")
+
+    except Exception as e:
+        await ctx.send(f"E-Ei... algo correu mal! Erro: {e}")
+
+@bot.command()
+async def lista(ctx):
+    if ctx.guild.id not in filas or not filas[ctx.guild.id]:
+        return await ctx.send("A lista está vazia, seu bobo! 🧁")
+    
+    msg = "📋 **Minha lista (não toque nela!):**\n"
+    for i, m in enumerate(filas[ctx.guild.id], 1):
+        msg += f"{i}. `{m['titulo']}`\n"
+    await ctx.send(msg)
+
+@bot.command()
+async def pular(ctx):
+    if ctx.voice_client and ctx.voice_client.is_playing():
+        ctx.voice_client.stop() # O stop ativa o 'after' automaticamente
+        await ctx.send("Pulado! Essa música já estava a dar sono... 🙄")
+    else:
+        await ctx.send("Não tem nada para pular, baka!")
 
 @bot.command()
 async def pausar(ctx):
     if ctx.voice_client and ctx.voice_client.is_playing():
         ctx.voice_client.pause()
-        await ctx.send("Pausado! ⏸️ Não penses que podes descansar para sempre, seu preguiçoso! >.<")
+        await ctx.send("Pausado! ⏸️ Vê se não demoras!")
     else:
-        await ctx.send("Mas nem sequer está a tocar nada! Estás a tentar enganar-me? 💢")
+        await ctx.send("Não está a tocar nada! És totó? 💢")
+
 @bot.command()
 async def retomar(ctx):
     if ctx.voice_client and ctx.voice_client.is_paused():
         ctx.voice_client.resume()
-        await ctx.send("Finalmente! ▶️ Estava a ficar farta de esperar por ti. Vamos continuar!")
+        await ctx.send("Finalmente! ▶️ Vamos continuar!")
     else:
-        await ctx.send("A música não está pausada, baka! Ouve com mais atenção! 🙄")
+        await ctx.send("Não está pausado, baka!")
 
 @bot.command()
 async def parar(ctx):
     if ctx.voice_client:
+        filas[ctx.guild.id] = [] # Limpa a lista
         ctx.voice_client.stop()
-        await ctx.send("Parou! ⏹️ Já chega de música por hoje, tenho mangás para ler! 😤")
-    else:
-        await ctx.send("Eu nem sequer estou no canal de voz... és totó? 😒")
+        await ctx.send("Parei tudo! ⏹️ Agora deixa-me ler em paz! 😤")
 
 @bot.command()
 async def sair(ctx):
     if ctx.voice_client:
         await ctx.voice_client.disconnect()
-        await ctx.send("Finalmente! 😤 Não aguentava mais ficar aqui com você. Tchau! baka! 🍰")
-    else:
-        await ctx.send("Eu nem estou em uma call, seu idiota! 💢")
+        await ctx.send("Finalmente livre de vocês! Tchau! 🍰")
+
 
 
 bot.run('coloque o seu')
