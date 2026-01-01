@@ -382,6 +382,59 @@ async def parar(ctx):
         filas[ctx.guild.id] = [] # Limpa a lista
         ctx.voice_client.stop()
         await ctx.send("Parei tudo! ⏹️ Agora deixa-me ler em paz! 😤")
+@bot.command()
+async def playlist(ctx, *, url: str):
+    ID_CANAL_VOZ = 1456187955613008017
+    canal = bot.get_channel(ID_CANAL_VOZ) or (ctx.author.voice.channel if ctx.author.voice else None)
+
+    if not canal:
+        return await ctx.send("Como vou tocar algo se não estou em um canal? Baka! 💢")
+
+    if not ctx.voice_client:
+        vc = await canal.connect()
+    else:
+        vc = ctx.voice_client
+
+    if ctx.guild.id not in filas:
+        filas[ctx.guild.id] = []
+
+    YDL_PLAYLIST_OPTIONS = {
+        'format': 'bestaudio/best',
+        'noplaylist': False, 
+        'extract_flat': 'in_playlist', 
+        'quiet': True
+    }
+
+    await ctx.send("📋 Carregando playlist... não me apresse, são muitas músicas! >.<")
+
+    try:
+        with yt_dlp.YoutubeDL(YDL_PLAYLIST_OPTIONS) as ydl:
+            info = ydl.extract_info(url, download=False)
+
+            if 'entries' not in info:
+                return await ctx.send("Isso não parece uma playlist... use o comando `.play` para músicas únicas! 🙄")
+
+            contador = 0
+            for entry in info['entries']:
+                if entry:
+                    # Monta a URL se ela não vier completa
+                    link_direto = entry.get('url') or f"https://www.youtube.com/watch?v={entry.get('id')}"
+                    filas[ctx.guild.id].append({
+                        'url': link_direto,
+                        'titulo': entry.get('title', 'Música sem nome')
+                    })
+                    contador += 1
+
+            await ctx.send(f"✅ Prontinho! Adicionei **{contador}** músicas na lista. Minhas costas estão doendo de carregar tanto peso... 🧁")
+
+            if not vc.is_playing() and not vc.is_paused():
+                tocar_proxima(ctx)
+
+    except Exception as e:
+        await ctx.send(f"Argh, deu erro ao carregar a playlist! Você colou o link certo? 💢 Erro: {e}")
+
+
+
 
 @bot.command()
 async def sair(ctx):
