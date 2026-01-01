@@ -77,3 +77,9 @@ footer {
     font-size: 0.8em;
     color: #ffb7c5;
 }
+footer a{
+    color: #ff69b4;
+    text-decoration: none;
+    font-size: 25px;
+    cursor: pointer;
+}
